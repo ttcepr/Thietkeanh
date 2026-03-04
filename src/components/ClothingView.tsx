@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   CloudUpload, 
   Check, 
@@ -10,6 +10,7 @@ import {
   ShoppingCart, 
   Search 
 } from 'lucide-react';
+import { useToast } from './Toast';
 
 const CLOTHING_PRODUCTS = [
   {
@@ -68,8 +69,58 @@ const CLOTHING_PRODUCTS = [
   }
 ];
 
+const MODEL_IMAGES = [
+  "https://lh3.googleusercontent.com/aida-public/AB6AXuClfzl8KtELRgUv5GOzj2xb-TKTahLi_ljs3mxfh6aBs7vVNLnA-McH3F_HTynVNe1OxWnJkmEjm8S6bqYNo56Vn80ryyeZ31eIYr9CiNqCEKXyqoENgISFWONBUlHEQBgvFvDMp3wgTOyAlNaE4bgV1SIuap8vQU3-ZIYzSbpThb1VjyYYVN0k06fjpdkarSw5z2tIyhp7CZAr2oXWZkmlm1H0V0zFTG4fvuGZaPpXEGqCQCF-dMnSCE-StAbOEShjt0lL0Z7KU-4",
+  "https://lh3.googleusercontent.com/aida-public/AB6AXuDjfmQk_WYnyAGrW1Kt0re5TzP9C9oWZ0oZFltfaOs97YueVhM4fSdN5yQt2L3358gSO6nAqc7bW6rj81EtPaKOthtZJ63N3TxRf_sqcKX6VMqGwN1mvdTMLPPi_-UPhoo58ujyxme3jyJrPvZb0IM0bU-3_xphFo4-ip88gAcuADOP2730ZBwPAOiZTILBgDr9Pn1i-NMvDopq1_OAn711zJRM2FUn9HGli97Ul7Zqt7F-kb0k5TaHiMJuFti91SV9Es4hQMRHYzQ",
+  "https://lh3.googleusercontent.com/aida-public/AB6AXuAK3a22Qn8AgaRzMPDCvPIBB9AJeNGdyP00rgCK-jwbWI2aTb59WGtKLxcYHi2D3Yc-kEXdBsy5sn6eXnjs43M6Rd2Kgia0nkkXBV4A4Sf2-DGpMJSTSKi005hlL03eKlcqFoqzlRYILL9FYTZd_D7qt3Go3s6QWw1TTO9hVc51PKM6X1XSpm67IlHa4xRK35pcyU2oTK20CAwi15MA4II-YqL_9Eqfz4sEKVT15aICBwcQZsvbieVv4IhOQhSPYxfgjDLadjMVQL8",
+  "https://lh3.googleusercontent.com/aida-public/AB6AXuCq2DVaYnx6Q1DnqNbGfC12VPsUoeFiISM72mXYKUAo-z6zf2a-d_Rh7SWqDSIv6xC0rP0ZQTtO5c0lc2bM-bM-hFWP3tsNjPCCRs5lMgr9pWqtgrxbDU4CjbNAnjMXBgcq1vZZzFN_HYElhzs-5Ie8uM7p62fBY4gcXg_lyWhYlWRcFF_dkrWBDxctLv6pNLlRoVTGPY8zcfBPPMf6aIVWQsjYVv9rTUl1Qa8uQoQVxxZ7fxDTAdX7rB2k-s0_LufhMMekOEpPb9M"
+];
+
 export function ClothingView() {
+  const { showToast } = useToast();
   const [selectedProduct, setSelectedProduct] = useState(CLOTHING_PRODUCTS[0]);
+  const [currentModel, setCurrentModel] = useState(MODEL_IMAGES[0]);
+  const [zoom, setZoom] = useState(1.0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (e.target?.result) {
+          setCurrentModel(e.target.result as string);
+          showToast("Đã tải ảnh lên thành công!", "success");
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleProductSelect = (product: typeof CLOTHING_PRODUCTS[0]) => {
+    setSelectedProduct(product);
+    showToast(`Đang thử ${product.name}...`, "info");
+    // Simulate processing delay
+    setTimeout(() => {
+      showToast(`Đã áp dụng ${product.name}`, "success");
+    }, 800);
+  };
+
+  const handleAddToCart = () => {
+    showToast(`Đã thêm ${selectedProduct.fullName} vào giỏ hàng`, "success");
+  };
+
+  const handleShare = () => {
+    showToast("Đã sao chép liên kết chia sẻ", "info");
+  };
+
+  const handleCapture = () => {
+    showToast("Đã chụp ảnh màn hình", "success");
+  };
+
+  const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.1, 2.0));
+  const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.1, 0.5));
+  const handleResetZoom = () => setZoom(1.0);
 
   return (
     <main className="flex-1 flex overflow-hidden h-[calc(100vh-88px)]">
@@ -77,7 +128,10 @@ export function ClothingView() {
       <aside className="w-80 border-r border-slate-200 bg-white overflow-y-auto hidden lg:flex flex-col p-6 gap-8">
         <section>
           <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 mb-4">Hình ảnh của bạn</h3>
-          <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 flex flex-col items-center justify-center text-center gap-3 hover:border-primary transition-colors cursor-pointer group">
+          <div 
+            onClick={() => fileInputRef.current?.click()}
+            className="border-2 border-dashed border-slate-300 rounded-xl p-8 flex flex-col items-center justify-center text-center gap-3 hover:border-primary transition-colors cursor-pointer group"
+          >
             <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
               <CloudUpload className="text-primary w-6 h-6" />
             </div>
@@ -85,44 +139,42 @@ export function ClothingView() {
               <p className="text-sm font-bold">Tải ảnh toàn thân</p>
               <p className="text-xs text-slate-500 mt-1">Hỗ trợ JPG, PNG lên đến 10MB</p>
             </div>
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              className="hidden" 
+              accept="image/*"
+              onChange={handleFileUpload}
+            />
           </div>
         </section>
         
         <section className="flex-1">
           <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 mb-4">Người mẫu mẫu</h3>
           <div className="grid grid-cols-2 gap-3">
-            <div className="aspect-[2/3] rounded-lg bg-slate-200 relative overflow-hidden cursor-pointer group border-2 border-primary">
-              <img 
-                alt="Sample model woman" 
-                className="w-full h-full object-cover" 
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuClfzl8KtELRgUv5GOzj2xb-TKTahLi_ljs3mxfh6aBs7vVNLnA-McH3F_HTynVNe1OxWnJkmEjm8S6bqYNo56Vn80ryyeZ31eIYr9CiNqCEKXyqoENgISFWONBUlHEQBgvFvDMp3wgTOyAlNaE4bgV1SIuap8vQU3-ZIYzSbpThb1VjyYYVN0k06fjpdkarSw5z2tIyhp7CZAr2oXWZkmlm1H0V0zFTG4fvuGZaPpXEGqCQCF-dMnSCE-StAbOEShjt0lL0Z7KU-4"
-              />
-              <div className="absolute inset-0 bg-primary/20 opacity-100"></div>
-              <div className="absolute bottom-2 right-2 bg-primary text-white p-1 rounded-full flex items-center justify-center">
-                <Check className="w-3 h-3" />
+            {MODEL_IMAGES.map((img, idx) => (
+              <div 
+                key={idx}
+                onClick={() => setCurrentModel(img)}
+                className={`aspect-[2/3] rounded-lg bg-slate-200 relative overflow-hidden cursor-pointer group transition-all ${
+                  currentModel === img ? 'border-2 border-primary ring-2 ring-primary/20' : 'hover:ring-2 hover:ring-primary'
+                }`}
+              >
+                <img 
+                  alt={`Model ${idx + 1}`} 
+                  className={`w-full h-full object-cover transition-opacity ${currentModel === img ? 'opacity-100' : 'opacity-80 hover:opacity-100'}`}
+                  src={img}
+                />
+                {currentModel === img && (
+                  <>
+                    <div className="absolute inset-0 bg-primary/10"></div>
+                    <div className="absolute bottom-2 right-2 bg-primary text-white p-1 rounded-full flex items-center justify-center">
+                      <Check className="w-3 h-3" />
+                    </div>
+                  </>
+                )}
               </div>
-            </div>
-            <div className="aspect-[2/3] rounded-lg bg-slate-200 overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary transition-all">
-              <img 
-                alt="Sample model man" 
-                className="w-full h-full object-cover opacity-80 hover:opacity-100" 
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuDjfmQk_WYnyAGrW1Kt0re5TzP9C9oWZ0oZFltfaOs97YueVhM4fSdN5yQt2L3358gSO6nAqc7bW6rj81EtPaKOthtZJ63N3TxRf_sqcKX6VMqGwN1mvdTMLPPi_-UPhoo58ujyxme3jyJrPvZb0IM0bU-3_xphFo4-ip88gAcuADOP2730ZBwPAOiZTILBgDr9Pn1i-NMvDopq1_OAn711zJRM2FUn9HGli97Ul7Zqt7F-kb0k5TaHiMJuFti91SV9Es4hQMRHYzQ"
-              />
-            </div>
-            <div className="aspect-[2/3] rounded-lg bg-slate-200 overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary transition-all">
-              <img 
-                alt="Sample model woman" 
-                className="w-full h-full object-cover opacity-80 hover:opacity-100" 
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuAK3a22Qn8AgaRzMPDCvPIBB9AJeNGdyP00rgCK-jwbWI2aTb59WGtKLxcYHi2D3Yc-kEXdBsy5sn6eXnjs43M6Rd2Kgia0nkkXBV4A4Sf2-DGpMJSTSKi005hlL03eKlcqFoqzlRYILL9FYTZd_D7qt3Go3s6QWw1TTO9hVc51PKM6X1XSpm67IlHa4xRK35pcyU2oTK20CAwi15MA4II-YqL_9Eqfz4sEKVT15aICBwcQZsvbieVv4IhOQhSPYxfgjDLadjMVQL8"
-              />
-            </div>
-            <div className="aspect-[2/3] rounded-lg bg-slate-200 overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary transition-all">
-              <img 
-                alt="Sample model man" 
-                className="w-full h-full object-cover opacity-80 hover:opacity-100" 
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuCq2DVaYnx6Q1DnqNbGfC12VPsUoeFiISM72mXYKUAo-z6zf2a-d_Rh7SWqDSIv6xC0rP0ZQTtO5c0lc2bM-bM-hFWP3tsNjPCCRs5lMgr9pWqtgrxbDU4CjbNAnjMXBgcq1vZZzFN_HYElhzs-5Ie8uM7p62fBY4gcXg_lyWhYlWRcFF_dkrWBDxctLv6pNLlRoVTGPY8zcfBPPMf6aIVWQsjYVv9rTUl1Qa8uQoQVxxZ7fxDTAdX7rB2k-s0_LufhMMekOEpPb9M"
-              />
-            </div>
+            ))}
           </div>
         </section>
       </aside>
@@ -135,34 +187,54 @@ export function ClothingView() {
             <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full uppercase tracking-tighter">Live Preview</span>
           </div>
           <div className="flex gap-2">
-            <button className="p-2 bg-white rounded-lg shadow-sm border border-slate-200 hover:text-primary transition-colors">
+            <button 
+              onClick={handleZoomIn}
+              className="p-2 bg-white rounded-lg shadow-sm border border-slate-200 hover:text-primary transition-colors"
+            >
               <ZoomIn className="w-5 h-5" />
             </button>
-            <button className="p-2 bg-white rounded-lg shadow-sm border border-slate-200 hover:text-primary transition-colors">
+            <button 
+              onClick={handleZoomOut}
+              className="p-2 bg-white rounded-lg shadow-sm border border-slate-200 hover:text-primary transition-colors"
+            >
               <ZoomOut className="w-5 h-5" />
             </button>
-            <button className="p-2 bg-white rounded-lg shadow-sm border border-slate-200 hover:text-primary transition-colors">
+            <button 
+              onClick={handleResetZoom}
+              className="p-2 bg-white rounded-lg shadow-sm border border-slate-200 hover:text-primary transition-colors"
+            >
               <Move className="w-5 h-5" />
             </button>
           </div>
         </div>
         
-        <div className="flex-1 relative flex items-center justify-center">
+        <div className="flex-1 relative flex items-center justify-center overflow-hidden">
           <div className="h-full w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden relative group">
             {/* Main Virtual Mirror Content */}
-            <img 
-              alt="Main virtual mirror" 
-              className="w-full h-full object-contain" 
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuBoo0IGHetaCxF2rsKckSyUBbyqKMOhSoYced1Ygi7mBUec6ylrNnPwSqQHObRnbj5sqLWuCzbnZTFoyEOWAmb-B7m3DXSybDAA6wjNh72CV7_Q0hYToN8ZuMJ1ZfdRo-EhUOvCXWdm2Q1UrDxTUJJSKu5YOubK5KyqLd-CjhXEJPI7cV_GBZgS98W6o0y8MvN2VpA9I6pqQqf9qqdLI7KEt0MPBhOYSBmtzWxbRAVfyipxq_kTs8meo-QXn7rcz5ZV5ae1IZDps_A"
-            />
+            <div 
+              className="w-full h-full transition-transform duration-300 ease-out"
+              style={{ transform: `scale(${zoom})` }}
+            >
+              <img 
+                alt="Main virtual mirror" 
+                className="w-full h-full object-contain" 
+                src={currentModel}
+              />
+            </div>
             {/* Overlay Controls (Hidden by default, show on hover) */}
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 px-6 py-3 bg-white/90 backdrop-blur rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
-              <button className="flex items-center gap-2 hover:text-primary">
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 px-6 py-3 bg-white/90 backdrop-blur rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10">
+              <button 
+                onClick={handleCapture}
+                className="flex items-center gap-2 hover:text-primary"
+              >
                 <Camera className="w-5 h-5" />
                 <span className="text-sm font-bold">Chụp ảnh</span>
               </button>
               <div className="w-px h-4 bg-slate-300"></div>
-              <button className="flex items-center gap-2 hover:text-primary">
+              <button 
+                onClick={handleShare}
+                className="flex items-center gap-2 hover:text-primary"
+              >
                 <Share2 className="w-5 h-5" />
                 <span className="text-sm font-bold">Chia sẻ</span>
               </button>
@@ -170,14 +242,17 @@ export function ClothingView() {
           </div>
         </div>
 
-        <div className="mt-6 flex items-center justify-between px-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="mt-6 flex items-center justify-between px-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm z-10">
           <div>
             <h4 className="text-lg font-bold">{selectedProduct.fullName}</h4>
             <p className="text-slate-500 text-sm">Thương hiệu: {selectedProduct.brand}</p>
           </div>
           <div className="flex items-center gap-6">
             <span className="text-2xl font-black text-primary">{selectedProduct.price}</span>
-            <button className="bg-primary text-white px-8 py-3 rounded-xl font-bold hover:bg-primary/90 transition-colors flex items-center gap-2 shadow-lg shadow-primary/20">
+            <button 
+              onClick={handleAddToCart}
+              className="bg-primary text-white px-8 py-3 rounded-xl font-bold hover:bg-primary/90 transition-colors flex items-center gap-2 shadow-lg shadow-primary/20"
+            >
               <ShoppingCart className="w-5 h-5" />
               Thêm vào giỏ hàng
             </button>
@@ -212,7 +287,7 @@ export function ClothingView() {
               {CLOTHING_PRODUCTS.filter(p => p.category === 'evening').map(product => (
                 <div 
                   key={product.id}
-                  onClick={() => setSelectedProduct(product)}
+                  onClick={() => handleProductSelect(product)}
                   className="flex flex-col gap-2 cursor-pointer group"
                 >
                   <div className={`aspect-square rounded-xl overflow-hidden relative ${
@@ -245,7 +320,7 @@ export function ClothingView() {
               {CLOTHING_PRODUCTS.filter(p => p.category === 'daily').map(product => (
                 <div 
                   key={product.id}
-                  onClick={() => setSelectedProduct(product)}
+                  onClick={() => handleProductSelect(product)}
                   className="flex flex-col gap-2 cursor-pointer group"
                 >
                   <div className={`aspect-square rounded-xl overflow-hidden relative ${
