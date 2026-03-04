@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   UserCircle, 
   CloudUpload, 
@@ -7,18 +7,33 @@ import {
   Crop, 
   RotateCcw, 
   ShoppingBag, 
-  Share2 
+  Share2,
+  Plus,
+  Link as LinkIcon,
+  Trash2,
+  Move
 } from 'lucide-react';
 import { useToast } from './Toast';
 
-const EYEWEAR_PRODUCTS = [
+interface Product {
+  id: number | string;
+  name: string;
+  collection: string;
+  price: number;
+  image: string;
+  overlay: string;
+  selected: boolean;
+  isCustom?: boolean;
+}
+
+const INITIAL_PRODUCTS: Product[] = [
   {
     id: 1,
     name: "Vàng Skyline",
     collection: "AVIATOR",
     price: 189,
     image: "https://lh3.googleusercontent.com/aida-public/AB6AXuCd-wZsdOOe-aRF3CLMXZMPAWVSsHdEVnJEuS2SDSAPEqsyiler-W2S6P2np7GEGsPRv74-WKCoCgXG_7-QRSnJAl1bYJfog7zJouN-pxjFEielzyoEyH_1TlKwdRDs-OIbYwD6ohjdDYqGOEQUJnv6-a8BBW6Zl4rtCJm66JWqVm8exbpC3p7hNJPRFgkI18Hvb2ruiojw7aPND8GmNKL0TJ3UFStHOxnBd7boVeXoy-LTMbPbE4kad48zDMDjeqnutHGOU4QibTE",
-    overlay: "https://lh3.googleusercontent.com/aida-public/AB6AXuCd-wZsdOOe-aRF3CLMXZMPAWVSsHdEVnJEuS2SDSAPEqsyiler-W2S6P2np7GEGsPRv74-WKCoCgXG_7-QRSnJAl1bYJfog7zJouN-pxjFEielzyoEyH_1TlKwdRDs-OIbYwD6ohjdDYqGOEQUJnv6-a8BBW6Zl4rtCJm66JWqVm8exbpC3p7hNJPRFgkI18Hvb2ruiojw7aPND8GmNKL0TJ3UFStHOxnBd7boVeXoy-LTMbPbE4kad48zDMDjeqnutHGOU4QibTE", // Using same image as placeholder for overlay if real overlay not available
+    overlay: "https://lh3.googleusercontent.com/aida-public/AB6AXuCd-wZsdOOe-aRF3CLMXZMPAWVSsHdEVnJEuS2SDSAPEqsyiler-W2S6P2np7GEGsPRv74-WKCoCgXG_7-QRSnJAl1bYJfog7zJouN-pxjFEielzyoEyH_1TlKwdRDs-OIbYwD6ohjdDYqGOEQUJnv6-a8BBW6Zl4rtCJm66JWqVm8exbpC3p7hNJPRFgkI18Hvb2ruiojw7aPND8GmNKL0TJ3UFStHOxnBd7boVeXoy-LTMbPbE4kad48zDMDjeqnutHGOU4QibTE",
     selected: false
   },
   {
@@ -67,11 +82,58 @@ const MODEL_IMAGES = [
 
 export function EyewearView() {
   const { showToast } = useToast();
-  const [selectedProduct, setSelectedProduct] = useState(EYEWEAR_PRODUCTS[1]);
+  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const [selectedProduct, setSelectedProduct] = useState(INITIAL_PRODUCTS[1]);
   const [currentImage, setCurrentImage] = useState(MODEL_IMAGES[2]);
   const [zoom, setZoom] = useState(1.0);
   const [brightness, setBrightness] = useState(100);
+  
+  // Glasses transform state
+  const [glassesPos, setGlassesPos] = useState({ x: 0, y: -16 });
+  const [glassesScale, setGlassesScale] = useState(1.0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const glassesInputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Helper to remove white background from image
+  const removeBackground = async (imageUrl: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      img.src = imageUrl;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(imageUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        
+        // Simple white background removal (threshold)
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          // If pixel is close to white
+          if (r > 240 && g > 240 && b > 240) {
+            data[i + 3] = 0; // Set alpha to 0
+          }
+        }
+        
+        ctx.putImageData(imageData, 0, 0);
+        resolve(canvas.toDataURL());
+      };
+      img.onerror = () => resolve(imageUrl);
+    });
+  };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -87,6 +149,104 @@ export function EyewearView() {
     }
   };
 
+  const handleGlassesUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        if (e.target?.result) {
+          showToast("Đang xử lý ảnh kính...", "info");
+          const processedImage = await removeBackground(e.target.result as string);
+          
+          const newProduct: Product = {
+            id: Date.now(),
+            name: `Kính tùy chỉnh ${products.length + 1}`,
+            collection: "CUSTOM",
+            price: 0,
+            image: processedImage,
+            overlay: processedImage,
+            selected: true,
+            isCustom: true
+          };
+          
+          setProducts(prev => [newProduct, ...prev]);
+          setSelectedProduct(newProduct);
+          showToast("Đã thêm kính mới và tự động tách nền!", "success");
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleAddFromUrl = () => {
+    const url = prompt("Nhập đường dẫn ảnh kính (URL):");
+    if (url) {
+      showToast("Đang tải kính từ URL...", "info");
+      removeBackground(url).then(processedImage => {
+        const newProduct: Product = {
+          id: Date.now(),
+          name: `Kính từ Internet ${products.length + 1}`,
+          collection: "INTERNET",
+          price: 0,
+          image: processedImage,
+          overlay: processedImage,
+          selected: true,
+          isCustom: true
+        };
+        setProducts(prev => [newProduct, ...prev]);
+        setSelectedProduct(newProduct);
+        showToast("Đã thêm kính từ Internet!", "success");
+      });
+    }
+  };
+
+  // Dragging Logic
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - glassesPos.x, y: e.clientY - glassesPos.y });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging) {
+      setGlassesPos({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  // Wheel to resize glasses
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) return; // Let browser handle zoom
+    e.preventDefault();
+    const delta = e.deltaY * -0.001;
+    setGlassesScale(prev => Math.min(Math.max(prev + delta, 0.5), 3));
+  };
+
+  // Drag and Drop from Collection
+  const handleDragStart = (e: React.DragEvent, product: Product) => {
+    e.dataTransfer.setData("productId", product.id.toString());
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const productId = e.dataTransfer.getData("productId");
+    const product = products.find(p => p.id.toString() === productId);
+    if (product) {
+      setSelectedProduct(product);
+      showToast(`Đã chọn ${product.name}`, "success");
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
   const handleAddToCart = () => {
     showToast(`Đã thêm ${selectedProduct.collection} - ${selectedProduct.name} vào giỏ hàng`, "success");
   };
@@ -98,6 +258,8 @@ export function EyewearView() {
   const handleReset = () => {
     setZoom(1.0);
     setBrightness(100);
+    setGlassesPos({ x: 0, y: -16 });
+    setGlassesScale(1.0);
     showToast("Đã đặt lại các điều chỉnh", "info");
   };
 
@@ -108,7 +270,7 @@ export function EyewearView() {
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
           <div className="flex items-center gap-2 mb-4">
             <UserCircle className="text-primary w-6 h-6" />
-            <h3 className="font-bold text-lg">Ảnh chân dung của bạn</h3>
+            <h3 className="font-bold text-lg">Ảnh chân dung</h3>
           </div>
           <div 
             onClick={() => fileInputRef.current?.click()}
@@ -157,12 +319,12 @@ export function EyewearView() {
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
           <div className="flex items-center gap-2 mb-4">
             <Wand2 className="text-primary w-5 h-5" />
-            <h3 className="font-bold text-lg">Điều chỉnh nhanh</h3>
+            <h3 className="font-bold text-lg">Điều chỉnh</h3>
           </div>
           <div className="space-y-4">
             <div className="space-y-2">
               <div className="flex justify-between text-xs font-semibold">
-                <span>Thu phóng</span>
+                <span>Thu phóng ảnh</span>
                 <span>{zoom}x</span>
               </div>
               <input 
@@ -189,6 +351,25 @@ export function EyewearView() {
                 onChange={(e) => setBrightness(parseInt(e.target.value))}
               />
             </div>
+            <div className="space-y-2 pt-4 border-t border-slate-100">
+              <div className="flex justify-between text-xs font-semibold">
+                <span>Kích thước kính</span>
+                <span>{Math.round(glassesScale * 100)}%</span>
+              </div>
+              <input 
+                className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary" 
+                type="range" 
+                min="0.5" 
+                max="3" 
+                step="0.1"
+                value={glassesScale}
+                onChange={(e) => setGlassesScale(parseFloat(e.target.value))}
+              />
+              <p className="text-[10px] text-slate-500 mt-1">
+                <Move className="w-3 h-3 inline mr-1" />
+                Kéo thả kính trên hình để di chuyển
+              </p>
+            </div>
           </div>
         </div>
       </aside>
@@ -211,9 +392,14 @@ export function EyewearView() {
             </div>
           </div>
           
-          <div className="flex-1 relative bg-slate-50 flex items-center justify-center p-8 overflow-hidden">
+          <div 
+            className="flex-1 relative bg-slate-50 flex items-center justify-center p-8 overflow-hidden"
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+          >
             {/* Virtual Mirror Canvas */}
             <div 
+              ref={containerRef}
               className="relative max-w-lg w-full aspect-[3/4] rounded-2xl overflow-hidden shadow-2xl ring-8 ring-white transition-all duration-300"
               style={{ 
                 transform: `scale(${zoom})`,
@@ -221,16 +407,27 @@ export function EyewearView() {
               }}
             >
               <img 
-                className="w-full h-full object-cover" 
+                className="w-full h-full object-cover pointer-events-none" 
                 alt="Virtual trial portrait" 
                 src={currentImage}
               />
-              {/* Simulated Overlay of Glasses */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              {/* Draggable Overlay of Glasses */}
+              <div 
+                className="absolute inset-0 flex items-center justify-center cursor-move"
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                onWheel={handleWheel}
+              >
                 <img 
-                  className="w-[60%] drop-shadow-2xl mix-blend-multiply opacity-90 transform -translate-y-4 transition-all duration-500" 
+                  className="w-[60%] drop-shadow-2xl mix-blend-multiply opacity-90 transition-transform duration-75" 
+                  style={{
+                    transform: `translate(${glassesPos.x}px, ${glassesPos.y}px) scale(${glassesScale})`
+                  }}
                   alt="Glasses overlay" 
                   src={selectedProduct.overlay}
+                  draggable={false}
                 />
               </div>
             </div>
@@ -262,8 +459,33 @@ export function EyewearView() {
       {/* Right Panel: Eyewear Collection (25%) */}
       <aside className="lg:col-span-3 flex flex-col overflow-hidden bg-white rounded-xl border border-slate-200">
         <div className="p-6 border-b border-slate-100">
-          <h3 className="font-bold text-lg">Bộ sưu tập kính</h3>
-          <div className="flex gap-2 mt-4 overflow-x-auto pb-2 scrollbar-hide">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-lg">Bộ sưu tập kính</h3>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => glassesInputRef.current?.click()}
+                className="p-1.5 bg-slate-100 hover:bg-primary hover:text-white rounded-lg transition-colors"
+                title="Tải kính lên"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={handleAddFromUrl}
+                className="p-1.5 bg-slate-100 hover:bg-primary hover:text-white rounded-lg transition-colors"
+                title="Thêm từ URL"
+              >
+                <LinkIcon className="w-4 h-4" />
+              </button>
+            </div>
+            <input 
+              type="file" 
+              ref={glassesInputRef} 
+              className="hidden" 
+              accept="image/*"
+              onChange={handleGlassesUpload}
+            />
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
             <span className="px-3 py-1 bg-primary text-white text-xs font-bold rounded-full cursor-pointer whitespace-nowrap">Tất cả</span>
             <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-bold rounded-full cursor-pointer hover:bg-slate-200 whitespace-nowrap">Nam</span>
             <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-bold rounded-full cursor-pointer hover:bg-slate-200 whitespace-nowrap">Nữ</span>
@@ -271,11 +493,13 @@ export function EyewearView() {
         </div>
         
         <div className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
-          {EYEWEAR_PRODUCTS.map((product) => (
+          {products.map((product) => (
             <div 
               key={product.id}
+              draggable
+              onDragStart={(e) => handleDragStart(e, product)}
               onClick={() => setSelectedProduct(product)}
-              className={`group border rounded-xl p-3 transition-all cursor-pointer ${
+              className={`group border rounded-xl p-3 transition-all cursor-pointer relative ${
                 selectedProduct.id === product.id 
                   ? 'border-2 border-primary bg-primary/[0.04] ring-4 ring-primary/10' 
                   : 'border-slate-100 hover:border-primary/50 hover:bg-primary/[0.02]'
@@ -300,13 +524,32 @@ export function EyewearView() {
                   <p className="text-xs font-bold text-primary mb-0.5">{product.collection}</p>
                   <h4 className="text-sm font-bold text-slate-900">{product.name}</h4>
                 </div>
-                <p className="text-sm font-extrabold text-slate-900">${product.price}</p>
+                <p className="text-sm font-extrabold text-slate-900">
+                  {product.price > 0 ? `$${product.price}` : 'Free'}
+                </p>
               </div>
+              {product.isCustom && (
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setProducts(prev => prev.filter(p => p.id !== product.id));
+                    if (selectedProduct.id === product.id) {
+                      setSelectedProduct(INITIAL_PRODUCTS[0]);
+                    }
+                  }}
+                  className="absolute top-2 right-2 p-1.5 bg-red-100 text-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-200"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              )}
             </div>
           ))}
         </div>
         
         <div className="p-4 bg-slate-50 border-t border-slate-100">
+          <p className="text-xs text-center text-slate-500 mb-2">
+            Mẹo: Kéo thả kính vào gương ảo để thử ngay
+          </p>
           <button className="w-full py-2.5 text-sm font-bold text-slate-700 border border-slate-300 rounded-lg hover:bg-white transition-colors">
             Xem toàn bộ danh mục
           </button>
