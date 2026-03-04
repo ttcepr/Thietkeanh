@@ -1,0 +1,5 @@
+{
+  "name": "VisionFit",
+  "description": "Virtual try-on application for eyewear and clothing",
+  "requestFramePermissions": []
+}
